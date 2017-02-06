@@ -23,6 +23,7 @@ type MongodbCollectorOpts struct {
 	CollectOplog             bool
 	CollectDatabaseMetrics   bool
 	CollectCollectionMetrics bool
+	CollectIndexStats        bool
 }
 
 func (in MongodbCollectorOpts) toSessionOps() shared.MongoSessionOpts {
@@ -55,6 +56,7 @@ func (exporter *MongodbCollector) Describe(ch chan<- *prometheus.Desc) {
 	(&ReplSetStatus{}).Describe(ch)
 	(&DatabaseStatus{}).Describe(ch)
 	(&CollectionStatus{}).Describe(ch)
+	(&IndexStats{}).Describe(ch)
 }
 
 // Collect collects all mongodb's metrics.
@@ -81,6 +83,11 @@ func (exporter *MongodbCollector) Collect(ch chan<- prometheus.Metric) {
 		if exporter.Opts.CollectCollectionMetrics {
 			glog.Info("Collecting Collection Metrics")
 			exporter.collectCollectionStatus(mongoSess, ch)
+		}
+
+		if exporter.Opts.CollectIndexStats {
+			glog.Info("Collecting Index Statistics")
+			exporter.collectIndexStats(mongoSess, ch)
 		}
 	}
 }
@@ -153,6 +160,31 @@ func (exporter *MongodbCollector) collectCollectionStatus(session *mgo.Session, 
 				if collectionStatus != nil {
 					glog.Infof("exporting Collection Metrics for db=%q collection=%q", db, collection)
 					collectionStatus.Export(ch)
+				}
+			}
+		}
+	}
+}
+
+func (exporter *MongodbCollector) collectIndexStats(session *mgo.Session, ch chan<- prometheus.Metric) {
+	all, err := session.DatabaseNames()
+	if err != nil {
+		glog.Error("Failed to get database names")
+		return
+	}
+	for _, db := range all {
+		if db != "admin" && db != "test" {
+			collections, err := session.DB(db).CollectionNames()
+			if err != nil {
+				glog.Errorf("Failed to get collection names for db=%q", db)
+				continue
+			}
+			for _, collection := range collections {
+				indexStats := GetIndexStats(session, db, collection)
+
+				if indexStats != nil {
+					glog.Infof("exporting Collection Metrics for db=%q collection=%q", db, collection)
+					indexStats.Export(ch)
 				}
 			}
 		}
