@@ -14,14 +14,15 @@ var (
 
 // MongodbCollectorOpts is the options of the mongodb collector.
 type MongodbCollectorOpts struct {
-	URI                    string
-	TLSCertificateFile     string
-	TLSPrivateKeyFile      string
-	TLSCaFile              string
-	TLSHostnameValidation  bool
-	CollectReplSet         bool
-	CollectOplog           bool
-	CollectDatabaseMetrics bool
+	URI                      string
+	TLSCertificateFile       string
+	TLSPrivateKeyFile        string
+	TLSCaFile                string
+	TLSHostnameValidation    bool
+	CollectReplSet           bool
+	CollectOplog             bool
+	CollectDatabaseMetrics   bool
+	CollectCollectionMetrics bool
 }
 
 func (in MongodbCollectorOpts) toSessionOps() shared.MongoSessionOpts {
@@ -53,6 +54,7 @@ func (exporter *MongodbCollector) Describe(ch chan<- *prometheus.Desc) {
 	(&ServerStatus{}).Describe(ch)
 	(&ReplSetStatus{}).Describe(ch)
 	(&DatabaseStatus{}).Describe(ch)
+	(&CollectionStatus{}).Describe(ch)
 }
 
 // Collect collects all mongodb's metrics.
@@ -74,6 +76,11 @@ func (exporter *MongodbCollector) Collect(ch chan<- prometheus.Metric) {
 		if exporter.Opts.CollectDatabaseMetrics {
 			glog.Info("Collecting Database Metrics")
 			exporter.collectDatabaseStatus(mongoSess, ch)
+		}
+
+		if exporter.Opts.CollectCollectionMetrics {
+			glog.Info("Collecting Collection Metrics")
+			exporter.collectCollectionStatus(mongoSess, ch)
 		}
 	}
 }
@@ -122,6 +129,31 @@ func (exporter *MongodbCollector) collectDatabaseStatus(session *mgo.Session, ch
 			if dbStatus != nil {
 				glog.Infof("exporting Database Metrics for db=%q", dbStatus.Name)
 				dbStatus.Export(ch)
+			}
+		}
+	}
+}
+
+func (exporter *MongodbCollector) collectCollectionStatus(session *mgo.Session, ch chan<- prometheus.Metric) {
+	all, err := session.DatabaseNames()
+	if err != nil {
+		glog.Error("Failed to get database names")
+		return
+	}
+	for _, db := range all {
+		if db != "admin" && db != "test" {
+			collections, err := session.DB(db).CollectionNames()
+			if err != nil {
+				glog.Errorf("Failed to get collection names for db=%q", db)
+				continue
+			}
+			for _, collection := range collections {
+				collectionStatus := GetCollectionStatus(session, db, collection)
+
+				if collectionStatus != nil {
+					glog.Infof("exporting Collection Metrics for db=%q collection=%q", db, collection)
+					collectionStatus.Export(ch)
+				}
 			}
 		}
 	}
