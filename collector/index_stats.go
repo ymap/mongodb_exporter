@@ -50,7 +50,7 @@ func (indexStats *IndexStats) Describe(ch chan<- *prometheus.Desc) {
 
 // GetIndexStats returns stats for a given collection in a database
 func GetIndexStats(session *mgo.Session, db, collection string) *IndexStats {
-	indexStats := IndexStats{Collection: collection}
+	indexStats := IndexStats{Collection: db + "." + collection}
 	err := session.DB(db).C(collection).Pipe([]bson.M{{"$indexStats": bson.M{}}}).All(&indexStats.Items)
 	if err != nil {
 		glog.Error(err)
