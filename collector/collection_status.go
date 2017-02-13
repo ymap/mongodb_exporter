@@ -32,15 +32,22 @@ var (
 		Name:      "total_index_size_bytes",
 		Help:      "The total size of all indexes",
 	}, []string{"collection"})
+	collIndexSize = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: Namespace,
+		Subsystem: "collection",
+		Name:      "index_size_bytes",
+		Help:      "The individual size of an index",
+	}, []string{"collection", "index"})
 )
 
 // CollectionStatus represents stats about a collection
 type CollectionStatus struct {
-	Name           string `bson:"ns,omitempty"`
-	ObjectCount    int    `bson:"count,omitempty"`
-	DataSize       int    `bson:"size,omitempty"`
-	StorageSize    int    `bson:"storageSize,omitempty"`
-	TotalIndexSize int    `bson:"totalIndexSize,omitempty"`
+	Name           string             `bson:"ns,omitempty"`
+	ObjectCount    int                `bson:"count,omitempty"`
+	DataSize       int                `bson:"size,omitempty"`
+	StorageSize    int                `bson:"storageSize,omitempty"`
+	TotalIndexSize int                `bson:"totalIndexSize,omitempty"`
+	IndexSizes     map[string]float64 `bson:"indexSizes,omitempty"`
 }
 
 // Export exports database stats to prometheus
@@ -49,16 +56,21 @@ func (collStatus *CollectionStatus) Export(ch chan<- prometheus.Metric) {
 	collDataSize.Reset()
 	collStorageSize.Reset()
 	collTotalIndexSize.Reset()
+	collIndexSize.Reset()
 
 	objectCount.WithLabelValues(collStatus.Name).Set(float64(collStatus.ObjectCount))
 	collDataSize.WithLabelValues(collStatus.Name).Set(float64(collStatus.DataSize))
 	collStorageSize.WithLabelValues(collStatus.Name).Set(float64(collStatus.StorageSize))
 	collTotalIndexSize.WithLabelValues(collStatus.Name).Set(float64(collStatus.TotalIndexSize))
+	for indexName, size := range collStatus.IndexSizes {
+		collIndexSize.WithLabelValues(collStatus.Name, indexName).Set(size)
+	}
 
 	objectCount.Collect(ch)
 	collDataSize.Collect(ch)
 	collStorageSize.Collect(ch)
 	collTotalIndexSize.Collect(ch)
+	collIndexSize.Collect(ch)
 }
 
 // Describe describes database stats for prometheus
